@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# zfs_disk_map.sh  v3.3.0
+# zfs_disk_map.sh  v3.3.1
 # =============================================================================
 # Maps all active ZFS pool member disks to their physical identifiers and
 # pool topology. Outputs a terminal reference table and/or P-Touch Editor
@@ -58,7 +58,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Globals
 # ---------------------------------------------------------------------------
-SCRIPT_VERSION="3.3.0"
+SCRIPT_VERSION="3.3.1"
 BASE_LABEL_DIR="$(pwd)/zfs_labels"
 
 DO_LABELS=false
@@ -208,15 +208,27 @@ build_vdev_map() {
         [[ "$line" =~ NAME[[:space:]]+STATE ]] && continue || true
         [[ -n "$current_pool" && "$line" =~ ^[[:space:]]{0,8}${current_pool}[[:space:]] ]] && continue || true
 
-        if [[ "$line" =~ ^[[:space:]]+(mirror|raidz[123]?|draid[23]?|spare|cache|log|special|dedup|replacing)(-[0-9]+)?[[:space:]] ]]; then
+        # Section headers: vdev groups (raidz1-0, mirror-1, etc.) and spare/cache/log pools
+        if [[ "$line" =~ ^[[:space:]]+(mirror|raidz[123]?|draid[23]?|cache|log|special|dedup|replacing)(-[0-9]+)?[[:space:]] ]]; then
             current_vdev_type="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"; vdev_position=0; continue
+        fi
+        # 'spares' section header — switch role to spare, reset position
+        if [[ "$line" =~ ^[[:space:]]+spares[[:space:]]*$ ]]; then
+            current_vdev_type="spare"; vdev_position=0; continue
         fi
 
         if [[ "$line" =~ ^[[:space:]]+(/dev/[^[:space:]]+) ]]; then
             local raw_dev="${BASH_REMATCH[1]}"
             local full_dev; full_dev=$(resolve_dev "$raw_dev")
             local base_disk; base_disk=$(parent_disk_of "$full_dev")
-            local role; [[ -n "$current_vdev_type" ]] && role="${current_vdev_type}:pos-${vdev_position}" || role="stripe:pos-${vdev_position}"
+            local role
+            if [[ "$current_vdev_type" == "spare" ]]; then
+                role="spare"
+            elif [[ -n "$current_vdev_type" ]]; then
+                role="${current_vdev_type}:pos-${vdev_position}"
+            else
+                role="stripe:pos-${vdev_position}"
+            fi
 
             local guid="N/A"
             command -v zdb &>/dev/null && [[ $EUID -eq 0 ]] && \
@@ -228,7 +240,7 @@ build_vdev_map() {
             # Fallback: grab second whitespace-delimited token (NAME STATE ...)
             if [[ "$state" == "UNKNOWN" ]]; then
                 state=$(echo "$line" | awk '{print $2}')
-                [[ "$state" =~ ^(ONLINE|DEGRADED|FAULTED|REMOVED|UNAVAIL|OFFLINE)$ ]] || state="UNKNOWN"
+                [[ "$state" =~ ^(ONLINE|DEGRADED|FAULTED|REMOVED|UNAVAIL|OFFLINE|AVAIL|INUSE)$ ]] || state="UNKNOWN"
             fi
 
             local entry="${current_pool}|${role}|${guid}|${raw_dev}|${state}"
@@ -314,8 +326,9 @@ print_table() {
             IFS='|' read -r disk part state serial model size pool role partuuid guid zpool_display <<< "$rec"
             local state_color="$C_RESET"
             [[ "$state" == "ONLINE"   ]] && state_color="$C_GREEN"  || true
+            [[ "$state" == "AVAIL"    ]] && state_color="$C_CYAN"   || true
             [[ "$state" == "DEGRADED" ]] && state_color="$C_YELLOW" || true
-            [[ "$state" =~ ^(FAULTED|REMOVED|UNAVAIL|OFFLINE)$ ]] && state_color="$C_RED" || true
+            [[ "$state" =~ ^(FAULTED|REMOVED|UNAVAIL|OFFLINE|INUSE)$ ]] && state_color="$C_RED" || true
             printf "%-6s  %-10s  ${state_color}%-9s${C_RESET}  %-22s  %-26s  %-6s  %-14s  %-22s  %-36s  %-18s  %s\n" \
                 "$disk" "$part" "$state" "$serial" "$model" "$size" "$pool" "$role" "$partuuid" "$guid" "$zpool_display"
         done
@@ -343,8 +356,9 @@ print_brief() {
             IFS='|' read -r disk part state serial model size pool role partuuid guid zpool_display <<< "$rec"
             local state_color="$C_RESET"
             [[ "$state" == "ONLINE"   ]] && state_color="$C_GREEN"  || true
+            [[ "$state" == "AVAIL"    ]] && state_color="$C_CYAN"   || true
             [[ "$state" == "DEGRADED" ]] && state_color="$C_YELLOW" || true
-            [[ "$state" =~ ^(FAULTED|REMOVED|UNAVAIL|OFFLINE)$ ]] && state_color="$C_RED" || true
+            [[ "$state" =~ ^(FAULTED|REMOVED|UNAVAIL|OFFLINE|INUSE)$ ]] && state_color="$C_RED" || true
             printf "%-6s  ${state_color}%-9s${C_RESET}  %-22s  %s\n" \
                 "$disk" "$state" "$serial" "$pool"
         done
