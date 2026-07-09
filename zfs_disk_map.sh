@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# zfs_disk_map.sh  v3.3.1
+# zfs_disk_map.sh  v3.4.0
 # =============================================================================
 # Maps all active ZFS pool member disks to their physical identifiers and
 # pool topology. Outputs a terminal reference table and/or P-Touch Editor
@@ -58,7 +58,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Globals
 # ---------------------------------------------------------------------------
-SCRIPT_VERSION="3.3.1"
+SCRIPT_VERSION="3.4.0"
 BASE_LABEL_DIR="$(pwd)/zfs_labels"
 
 DO_LABELS=false
@@ -462,6 +462,14 @@ lbx_textobj_r() {
     echo -n "<text:text><pt:objectStyle x=\"${x}\" y=\"${y}\" width=\"${w}\" height=\"${h}\" backColor=\"#FFFFFF\" backPrintColorNumber=\"0\" ropMode=\"COPYPEN\" angle=\"0\" anchor=\"TOPLEFT\" flip=\"NONE\"><pt:pen style=\"NULL\" widthX=\"0.5pt\" widthY=\"0.5pt\" color=\"#000000\" printColorNumber=\"1\"/><pt:brush style=\"NULL\" color=\"#000000\" printColorNumber=\"1\" id=\"0\"/><pt:expanded objectName=\"${name}\" ID=\"${id}\" lock=\"0\" templateMergeTarget=\"LABELLIST\" templateMergeType=\"NONE\" templateMergeID=\"0\" linkStatus=\"NONE\" linkID=\"0\"/></pt:objectStyle><text:ptFontInfo><text:logFont name=\"${font}\" width=\"0\" italic=\"false\" weight=\"${weight}\" charSet=\"0\" pitchAndFamily=\"34\"/><text:fontExt effect=\"NOEFFECT\" underline=\"0\" strikeout=\"0\" size=\"${size}\" orgSize=\"${orgsize}\" textColor=\"#000000\" textPrintColorNumber=\"1\"/></text:ptFontInfo><text:textControl control=\"LONGTEXTFIXED\" clipFrame=\"false\" aspectNormal=\"true\" shrink=\"true\" autoLF=\"false\" avoidImage=\"false\"/><text:textAlign horizontalAlignment=\"RIGHT\" verticalAlignment=\"CENTER\" inLineAlignment=\"BASELINE\"/><text:textStyle vertical=\"false\" nullBlock=\"false\" charSpace=\"0\" lineSpace=\"0\" orgPoint=\"${size}\" combinedChars=\"false\"/><pt:data>${data}</pt:data>${si}</text:text>"
 }
 
+lbx_textobj_lf() {
+    # Left-aligned, autoLF=true variant (for multi-line text boxes)
+    local name="$1" id="$2" x="$3" y="$4" w="$5" h="$6"
+    local size="$7" orgsize="$8" weight="$9" data="${10}" font="${11:-Arial Narrow}"
+    local si; si=$(make_string_items "$data" "$size" "$orgsize" "$weight" "$font")
+    echo -n "<text:text><pt:objectStyle x=\"${x}\" y=\"${y}\" width=\"${w}\" height=\"${h}\" backColor=\"#FFFFFF\" backPrintColorNumber=\"0\" ropMode=\"COPYPEN\" angle=\"0\" anchor=\"TOPLEFT\" flip=\"NONE\"><pt:pen style=\"NULL\" widthX=\"0.5pt\" widthY=\"0.5pt\" color=\"#000000\" printColorNumber=\"1\"/><pt:brush style=\"NULL\" color=\"#000000\" printColorNumber=\"1\" id=\"0\"/><pt:expanded objectName=\"${name}\" ID=\"${id}\" lock=\"0\" templateMergeTarget=\"LABELLIST\" templateMergeType=\"NONE\" templateMergeID=\"0\" linkStatus=\"NONE\" linkID=\"0\"/></pt:objectStyle><text:ptFontInfo><text:logFont name=\"${font}\" width=\"0\" italic=\"false\" weight=\"${weight}\" charSet=\"0\" pitchAndFamily=\"34\"/><text:fontExt effect=\"NOEFFECT\" underline=\"0\" strikeout=\"0\" size=\"${size}\" orgSize=\"${orgsize}\" textColor=\"#000000\" textPrintColorNumber=\"1\"/></text:ptFontInfo><text:textControl control=\"LONGTEXTFIXED\" clipFrame=\"false\" aspectNormal=\"true\" shrink=\"true\" autoLF=\"true\" avoidImage=\"false\"/><text:textAlign horizontalAlignment=\"LEFT\" verticalAlignment=\"CENTER\" inLineAlignment=\"BASELINE\"/><text:textStyle vertical=\"false\" nullBlock=\"false\" charSpace=\"0\" lineSpace=\"0\" orgPoint=\"${size}\" combinedChars=\"false\"/><pt:data>${data}</pt:data>${si}</text:text>"
+}
+
 # ---------------------------------------------------------------------------
 # 24mm LBX  (--lbx-24)
 # Layout: 5 full-width lines, framed, verified against PT-2430PC output
@@ -575,6 +583,10 @@ save_lbx_12() {
 # Fixed width 2.5" (180pt), 18mm tape — right col overlaps serial box (intentional)
 # ---------------------------------------------------------------------------
 save_lbx_18() {
+    # Layout (2.3" / 165.6pt fixed width, 18mm tape):
+    #   Left  : MODEL\nSERIAL — 10pt bold, autoLF, vertically centered (x=5, w=85pt)
+    #   Right : POOL / ROLE / SIZE — 8pt non-bold, right-justified (x=85.7, w=72.7pt)
+    #   Bottom: PARTUUID — 5pt non-bold, right-justified, full width
     local dir="${BASE_LABEL_DIR}/lbx-18"
     mkdir -p "$dir"
     local count=0
@@ -585,40 +597,31 @@ save_lbx_18() {
         [[ -z "$safe_serial" ]] && safe_serial="unknown_${disk}" || true
         local gen_date; gen_date=$(date '+%Y-%m-%dT%H:%M:%SZ')
 
-        local x_serial x_part x_pool x_role x_model
+        local x_serial x_model x_pool x_role x_size x_partuuid
         x_serial=$(xml_esc "$serial")
-        x_part=$(xml_esc "$part")
-        x_pool=$(xml_esc "$pool")
-        x_role=$(xml_esc "$role")
         x_model=$(xml_esc "$model")
+        x_pool=$(xml_esc "$pool" | tr '[:lower:]' '[:upper:]')
+        x_role=$(xml_esc "$role" | tr '[:lower:]' '[:upper:]')
+        x_size=$(xml_esc "$size")
+        x_partuuid=$(xml_esc "$partuuid" | tr '[:lower:]' '[:upper:]')
 
-        # Right col — all caps
-        local r_part; r_part=$(echo "${x_part}  |  ${x_pool}" | tr '[:lower:]' '[:upper:]')
-        local r_role; r_role=$(echo "$x_role" | tr '[:lower:]' '[:upper:]')
-        local r_mfr r_mdl
-        if [[ "$x_model" == *" "* ]]; then
-            r_mfr=$(echo "${x_model%% *}" | tr '[:lower:]' '[:upper:]')
-            r_mdl=$(echo "${x_model#* }"  | tr '[:lower:]' '[:upper:]')
-        else
-            r_mfr=""
-            r_mdl=$(echo "$x_model" | tr '[:lower:]' '[:upper:]')
-        fi
+        local left_data; left_data="${x_model}
+${x_serial}"
 
         local tmpdir; tmpdir=$(mktemp -d)
 
         {
             echo -n "${LBX_HEADER}"
             echo -n '<pt:body currentSheet="Sheet 1" direction="LTR"><style:sheet name="Sheet 1">'
-            echo -n '<style:paper media="0" width="51.02pt" height="180pt" marginLeft="2.8pt" marginTop="5.7pt" marginRight="2.8pt" marginBottom="5.7pt" orientation="landscape" autoLength="false" monochromeDisplay="true" printColorDisplay="false" printColorsID="0" paperColor="#FFFFFF" paperInk="#000000" split="1" format="260" backgroundTheme="0" printerID="23088" printerName="Brother PT-2430PC"/>'
+            echo -n '<style:paper media="0" width="51.2pt" height="165.6pt" marginLeft="3.2pt" marginTop="5.7pt" marginRight="3.2pt" marginBottom="5.7pt" orientation="landscape" autoLength="false" monochromeDisplay="true" printColorDisplay="false" printColorsID="0" paperColor="#FFFFFF" paperInk="#000000" split="1" format="260" backgroundTheme="0" printerID="23088" printerName="Brother PT-2430PC"/>'
             echo -n '<style:cutLine regularCut="0pt" freeCut=""/>'
-            echo -n '<style:backGround x="2.8pt" y="5.7pt" width="174.4pt" height="39.6pt" brushStyle="NULL" brushId="0" userPattern="NONE" userPatternId="0" color="#000000" printColorNumber="1" backColor="#FFFFFF" backPrintColorNumber="0"/>'
+            echo -n '<style:backGround x="5.6pt" y="3.2pt" width="154.4pt" height="44.8pt" brushStyle="NULL" brushId="0" userPattern="NONE" userPatternId="0" color="#000000" printColorNumber="1" backColor="#FFFFFF" backPrintColorNumber="0"/>'
             echo -n '<pt:objects>'
-            lbx_textobj   "Serial" 1 "5pt"  "5.7pt"  "123pt" "39.6pt" "14pt" "14pt" "400" "$x_serial"
-            lbx_divider "131pt" "5.7pt" "39.6pt"
-            lbx_textobj_r "Part" 2 "90pt" "5.7pt"  "80pt" "7pt" "6pt" "6pt" "700" "$r_part"
-            lbx_textobj_r "Role" 3 "90pt" "16.3pt" "80pt" "7pt" "6pt" "6pt" "700" "$r_role"
-            lbx_textobj_r "Mfr"  4 "90pt" "27.5pt" "80pt" "6pt" "6pt" "6pt" "700" "$r_mfr"
-            lbx_textobj_r "Mdl"  5 "90pt" "33.5pt" "80pt" "6pt" "6pt" "6pt" "700" "$r_mdl"
+            lbx_textobj_lf "ModelSerial" 1 "5pt"    "5.7pt"  "85pt"   "39.6pt" "10pt" "10pt" "700" "$left_data"
+            lbx_textobj_r  "Pool"        2 "85.7pt" "5.2pt"  "72.7pt" "6pt"    "8pt"  "8pt"  "400" "POOL: ${x_pool}"
+            lbx_textobj_r  "Role"        3 "85.7pt" "13.2pt" "72.7pt" "6pt"    "8pt"  "8pt"  "400" "$x_role"
+            lbx_textobj_r  "Size"        4 "85.7pt" "21.2pt" "72.7pt" "6pt"    "8pt"  "8pt"  "400" "SIZE: ${x_size}"
+            lbx_textobj_r  "PartUUID"    5 "5.6pt"  "39.2pt" "154.4pt" "8pt"   "5pt"  "5pt"  "400" "PARTUUID: ${x_partuuid}"
             echo -n '</pt:objects></style:sheet></pt:body></pt:document>'
         } > "${tmpdir}/label.xml"
 
