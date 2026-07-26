@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# zfs_disk_map.sh  v3.4.0
+# zfs_disk_map.sh  v3.5.0
 # =============================================================================
 # Maps all active ZFS pool member disks to their physical identifiers and
 # pool topology. Outputs a terminal reference table and/or P-Touch Editor
@@ -58,7 +58,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Globals
 # ---------------------------------------------------------------------------
-SCRIPT_VERSION="3.4.0"
+SCRIPT_VERSION="3.5.0"
 BASE_LABEL_DIR="$(pwd)/zfs_labels"
 
 DO_LABELS=false
@@ -374,6 +374,7 @@ print_brief() {
 # ---------------------------------------------------------------------------
 save_labels() {
     local dir="${BASE_LABEL_DIR}/txt"
+    [[ -d "$dir" ]] && rm -rf "$dir" || true
     mkdir -p "$dir"
     local sep; sep=$(printf '%0.s-' {1..60})
     local count=0
@@ -476,6 +477,7 @@ lbx_textobj_lf() {
 # ---------------------------------------------------------------------------
 save_lbx_24() {
     local dir="${BASE_LABEL_DIR}/lbx-24"
+    [[ -d "$dir" ]] && rm -rf "$dir" || true
     mkdir -p "$dir"
     local count=0
 
@@ -533,6 +535,7 @@ save_lbx_24() {
 # ---------------------------------------------------------------------------
 save_lbx_12() {
     local dir="${BASE_LABEL_DIR}/lbx-12"
+    [[ -d "$dir" ]] && rm -rf "$dir" || true
     mkdir -p "$dir"
     local count=0
 
@@ -584,10 +587,11 @@ save_lbx_12() {
 # ---------------------------------------------------------------------------
 save_lbx_18() {
     # Layout (2.3" / 165.6pt fixed width, 18mm tape):
-    #   Left  : MODEL\nSERIAL — 10pt bold, autoLF, vertically centered (x=5, w=85pt)
-    #   Right : POOL / ROLE / SIZE — 8pt non-bold, right-justified (x=85.7, w=72.7pt)
+    #   Left  : MODEL\nSERIAL — 10pt bold, autoLF, vertically centered (x=9.7, w=110.7pt)
+    #   Right : POOL / SIZE (top) | ROLE (bottom) — 8pt non-bold, right-justified
     #   Bottom: PARTUUID — 5pt non-bold, right-justified, full width
     local dir="${BASE_LABEL_DIR}/lbx-18"
+    [[ -d "$dir" ]] && rm -rf "$dir" || true
     mkdir -p "$dir"
     local count=0
 
@@ -617,11 +621,11 @@ ${x_serial}"
             echo -n '<style:cutLine regularCut="0pt" freeCut=""/>'
             echo -n '<style:backGround x="5.6pt" y="3.2pt" width="154.4pt" height="44.8pt" brushStyle="NULL" brushId="0" userPattern="NONE" userPatternId="0" color="#000000" printColorNumber="1" backColor="#FFFFFF" backPrintColorNumber="0"/>'
             echo -n '<pt:objects>'
-            lbx_textobj_lf "ModelSerial" 1 "5pt"    "5.7pt"  "85pt"   "39.6pt" "10pt" "10pt" "700" "$left_data"
-            lbx_textobj_r  "Pool"        2 "85.7pt" "5.2pt"  "72.7pt" "6pt"    "8pt"  "8pt"  "400" "POOL: ${x_pool}"
-            lbx_textobj_r  "Role"        3 "85.7pt" "13.2pt" "72.7pt" "6pt"    "8pt"  "8pt"  "400" "$x_role"
-            lbx_textobj_r  "Size"        4 "85.7pt" "21.2pt" "72.7pt" "6pt"    "8pt"  "8pt"  "400" "SIZE: ${x_size}"
-            lbx_textobj_r  "PartUUID"    5 "5.6pt"  "39.2pt" "154.4pt" "8pt"   "5pt"  "5pt"  "400" "PARTUUID: ${x_partuuid}"
+            lbx_textobj_lf "ModelSerial" 1 "9.7pt"  "7.2pt"  "110.7pt" "39.6pt" "10pt" "10pt" "700" "$left_data"
+            lbx_textobj_r  "Pool"        2 "85.7pt" "5.2pt"  "72.7pt"  "6pt"    "8pt"  "8pt"  "400" "POOL: ${x_pool}"
+            lbx_textobj_r  "Size"        3 "85.7pt" "13.2pt" "72.7pt"  "6pt"    "8pt"  "8pt"  "400" "SIZE: ${x_size}"
+            lbx_textobj_r  "Role"        4 "87.7pt" "33.2pt" "72.7pt"  "6pt"    "8pt"  "8pt"  "400" "${x_role}"
+            lbx_textobj_r  "PartUUID"    5 "5.6pt"  "39.2pt" "154.4pt" "8pt"    "5pt"  "5pt"  "400" "PARTUUID: ${x_partuuid}"
             echo -n '</pt:objects></style:sheet></pt:body></pt:document>'
         } > "${tmpdir}/label.xml"
 
