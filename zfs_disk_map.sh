@@ -415,16 +415,19 @@ xml_esc() { echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;
 
 make_string_items() {
     local text="$1" size="$2" orgsize="$3" weight="${4:-400}" font="${5:-Arial Narrow}"
-    local out="" tok
-    # Group into whitespace-separated tokens (matches P-Touch Editor behaviour)
-    while IFS= read -r -d '' tok; do
-        [[ -z "$tok" ]] && continue || true
-        out+="<text:stringItem charLen=\"${#tok}\"><text:ptFontInfo>"
-        out+="<text:logFont name=\"${font}\" width=\"0\" italic=\"false\" weight=\"${weight}\" charSet=\"0\" pitchAndFamily=\"34\"/>"
-        out+="<text:fontExt effect=\"NOEFFECT\" underline=\"0\" strikeout=\"0\" size=\"${size}\" orgSize=\"${orgsize}\" textColor=\"#000000\" textPrintColorNumber=\"1\"/>"
-        out+="</text:ptFontInfo></text:stringItem>"
-    done < <(echo -n "$text" | grep -oP '\S+|\s+' | tr '\n' '\0')
-    echo "$out"
+    # Delegate entirely to Python — shell cannot reliably handle newline tokens
+    python3 -c "
+import sys, re
+text, size, orgsize, weight, font = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+out = ''
+for tok in re.findall(r'[^\\S\\n]+|\\n|\\S+', text):
+    n = len(tok)
+    out += f'<text:stringItem charLen=\"{n}\"><text:ptFontInfo>'
+    out += f'<text:logFont name=\"{font}\" width=\"0\" italic=\"false\" weight=\"{weight}\" charSet=\"0\" pitchAndFamily=\"34\"/>'
+    out += f'<text:fontExt effect=\"NOEFFECT\" underline=\"0\" strikeout=\"0\" size=\"{size}\" orgSize=\"{orgsize}\" textColor=\"#000000\" textPrintColorNumber=\"1\"/>'
+    out += '</text:ptFontInfo></text:stringItem>'
+print(out, end='')
+" "$text" "$size" "$orgsize" "$weight" "$font"
 }
 
 write_lbx() {
